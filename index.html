@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Breakout Game – 9 Columns x 5 Rows with Level Changes</title>
+  <style>
+    body {
+      background: #000;
+      color: #fff;
+      font-family: sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 0;
+    }
+    canvas {
+      background: #eee;
+      display: block;
+      margin: 20px auto;
+      
+      border-radius: 5px;
+    }
+    button {
+      font-size: 16px;
+      padding: 10px 20px;
+      margin: 5px;
+      cursor: pointer;
+      border-radius: 5px;
+      background-color: #f44900;
+      color: #fff;
+    }
+    
+  </style>
+</head>
+<body>
+  <!-- Fixed canvas of 580x420 -->
+  <canvas id="gameCanvas" width="380" height="500"></canvas>
+  <div>
+    <button id="startBtn">Start</button>
+    <button id="pauseBtn">Pause</button>
+  </div>
+
+  <script>
+    // =====================================
+    // Canvas Setup (Fixed Size)
+    // =====================================
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const CANVAS_WIDTH = canvas.width;   // 580
+    const CANVAS_HEIGHT = canvas.height; // 420
+
+    // =====================================
+    // Global Game Variables and Constants
+    // =====================================
+    let level, score;
+    
+    // Ball properties – its color will change between levels.
+    let ballRadius, ballColor, x, y, dx, dy;
+    
+    // Paddle properties – its width will shrink by 10% each level.
+    let paddleWidth, paddleHeight, paddleX;
+    
+    // Brick properties:
+    // We want exactly 9 columns and (initially) 5 rows.
+    const brickColumnCount = 6;         // Fixed: 6 columns horizontally.
+    const baseBrickRowCount = 4;          // Level 1: 4 rows.
+    let brickRowCount;                  // = baseBrickRowCount + (level - 1)
+    
+    // Brick dimensions and spacing.
+    const brickWidth = 50;
+    const brickHeight = 15;
+    const brickPadding = 5;
+    const brickOffsetLeft = 30;
+    const brickOffsetTop = 30;
+    
+    // Bricks will be stored in a 2D array with rows as the outer loop.
+    let bricks = [];
+    
+    // Colors – used for ball and bricks.
+    const ballColors = ["#3733FF","#33CCFF", "#FF00FF", "#996633", "#33FF57", "#FFBD33", "#FF5733", "#FF335A", "#FF3733", "#7D3C98", "#16A085", "#82E0AA", "#F4D03F", "#B03A2E", "#E91E63"];
+    
+    // Animation and game state control
+    let animId;
+    let gameRunning = false;
+    let gamePaused = false;
+    
+    // =====================================
+    // Keyboard Controls
+    // =====================================
+    let rightPressed = false;
+    let leftPressed = false;
+    document.addEventListener("keydown", keyDownHandler, false);
+    document.addEventListener("keyup", keyUpHandler, false);
+    
+    function keyDownHandler(e) {
+      if (e.key === "Right" || e.key === "ArrowRight") {
+        rightPressed = true;
+      } else if (e.key === "Left" || e.key === "ArrowLeft") {
+        leftPressed = true;
+      }
+    }
+    
+    function keyUpHandler(e) {
+      if (e.key === "Right" || e.key === "ArrowRight") {
+        rightPressed = false;
+      } else if (e.key === "Left" || e.key === "ArrowLeft") {
+        leftPressed = false;
+      }
+    }
+    
+    // =====================================
+    // Initialization Functions
+    // =====================================
+    
+    // Initialize the brick layout.
+    // For level 1, we have 5 rows; each new level adds one extra row.
+    function initBricks() {
+      brickRowCount = baseBrickRowCount + (level - 1);
+      bricks = [];
+      for (let r = 0; r < brickRowCount; r++) {
+        bricks[r] = [];
+        for (let c = 0; c < brickColumnCount; c++) {
+          // Each brick gets a random color.
+          let randomColor = ballColors[Math.floor(Math.random() * ballColors.length)];
+          bricks[r][c] = { x: 0, y: 0, status: 1, color: randomColor };
+        }
+      }
+    }
+    
+    // Reset game variables for a new game.
+    function resetGame() {
+      level = 1;
+      score = 0;
+      ballRadius = 10;
+      ballColor = ballColors[0];  // starting ball color
+      x = CANVAS_WIDTH / 2;
+      y = CANVAS_HEIGHT - 30;
+      dx = 2;
+      dy = -2;
+      paddleWidth = 75;
+      paddleHeight = 10;
+      paddleX = (CANVAS_WIDTH - paddleWidth) / 2;
+      initBricks();
+    }
+    
+    // =====================================
+    // Drawing Functions
+    // =====================================
+    
+    // Draw bricks using rows as the outer loop and columns as the inner loop.
+    function drawBricks() {
+      for (let r = 0; r < brickRowCount; r++) {
+        for (let c = 0; c < brickColumnCount; c++) {
+          if (bricks[r][c].status === 1) {
+            // Compute brick position:
+            // - Horizontal position is based on the column index.
+            // - Vertical position is based on the row index.
+            const brickX = c * (brickWidth + brickPadding) + brickOffsetLeft;
+            const brickY = r * (brickHeight + brickPadding) + brickOffsetTop;
+            bricks[r][c].x = brickX;
+            bricks[r][c].y = brickY;
+            ctx.beginPath();
+            ctx.rect(brickX, brickY, brickWidth, brickHeight);
+            ctx.fillStyle = bricks[r][c].color;
+            ctx.fill();
+            ctx.closePath();
+          }
+        }
+      }
+    }
+    
+    function drawBall() {
+      ctx.beginPath();
+      ctx.arc(x, y, ballRadius, 0, Math.PI * 2);
+      ctx.fillStyle = ballColor;
+      ctx.fill();
+      ctx.closePath();
+    }
+    
+    function drawPaddle() {
+      ctx.beginPath();
+      ctx.rect(paddleX, CANVAS_HEIGHT - paddleHeight, paddleWidth, paddleHeight);
+      ctx.fillStyle = "#663399";
+      ctx.fill();
+      ctx.closePath();
+    }
+    
+    function drawScore() {
+      ctx.font = "16px Arial";
+      ctx.fillStyle = "#0095DD";
+      ctx.fillText("Score: " + score + "  Level: " + level, 8, 20);
+    }
+    
+    // =====================================
+    // Collision Detection
+    // =====================================
+    
+    function collisionDetection() {
+      // Loop over rows first, then columns.
+      for (let r = 0; r < brickRowCount; r++) {
+        for (let c = 0; c < brickColumnCount; c++) {
+          let b = bricks[r][c];
+          if (b.status === 1) {
+            if (x > b.x && x < b.x + brickWidth &&
+                y > b.y && y < b.y + brickHeight) {
+              dy = -dy;
+              b.status = 0;
+              score++;
+            }
+          }
+        }
+      }
+      // Check if all bricks are cleared.
+      let allCleared = true;
+      for (let r = 0; r < brickRowCount; r++) {
+        for (let c = 0; c < brickColumnCount; c++) {
+          if (bricks[r][c].status === 1) {
+            allCleared = false;
+            break;
+          }
+        }
+        if (!allCleared) break;
+      }
+      if (allCleared) {
+        nextLevel();
+      }
+    }
+    
+    // =====================================
+    // Level Up Routine
+    // =====================================
+    
+    function nextLevel() {
+      level++;
+      // Change the ball's color to a new random color.
+      ballColor = ballColors[Math.floor(Math.random() * ballColors.length)];
+      // Shrink the paddle (the moving board) by 10%.
+      paddleWidth *= 0.9;
+      // Reduce the ball size by 10%.
+      ballRadius *= 0.9;
+      // Add an extra row of bricks by reinitializing the brick layout.
+      initBricks();
+      // Reset ball and paddle positions.
+      x = CANVAS_WIDTH / 2;
+      y = CANVAS_HEIGHT - 30;
+      paddleX = (CANVAS_WIDTH - paddleWidth) / 2;
+    }
+    
+    // =====================================
+    // Main Game Loop (Draw Function)
+    // =====================================
+    
+    function draw() {
+      ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      drawBricks();
+      drawBall();
+      drawPaddle();
+      drawScore();
+      collisionDetection();
+      
+      // Bounce off the left and right walls.
+      if (x + dx > CANVAS_WIDTH - ballRadius || x + dx < ballRadius) {
+        dx = -dx;
+      }
+      // Bounce off the top.
+      if (y + dy < ballRadius) {
+        dy = -dy;
+      }
+      // When the ball reaches the bottom...
+      else if (y + dy > CANVAS_HEIGHT - ballRadius) {
+        // Check if the ball hits the paddle.
+        if (x > paddleX && x < paddleX + paddleWidth) {
+          dy = -dy;
+        } else {
+          alert("GAME OVER");
+          gameRunning = false;
+          cancelAnimationFrame(animId);
+          return;
+        }
+      }
+      
+      // Update ball position.
+      x += dx;
+      y += dy;
+      
+      // Move the paddle.
+      if (rightPressed && paddleX < CANVAS_WIDTH - paddleWidth) {
+        paddleX += 7;
+      }
+      if (leftPressed && paddleX > 0) {
+        paddleX -= 7;
+      }
+      
+      if (!gamePaused) {
+        animId = requestAnimationFrame(draw);
+      }
+    }
+    
+    // =====================================
+    // Start and Pause Button Functionality
+    // =====================================
+    
+    const startBtn = document.getElementById("startBtn");
+    const pauseBtn = document.getElementById("pauseBtn");
+    
+    function startGame() {
+      resetGame();
+      gameRunning = true;
+      gamePaused = false;
+      pauseBtn.textContent = "Pause";
+      animId = requestAnimationFrame(draw);
+    }
+    
+    function togglePause() {
+      if (!gameRunning) return;
+      gamePaused = !gamePaused;
+      if (!gamePaused) {
+        pauseBtn.textContent = "Pause";
+        animId = requestAnimationFrame(draw);
+      } else {
+        pauseBtn.textContent = "Resume";
+        cancelAnimationFrame(animId);
+      }
+    }
+    
+    startBtn.addEventListener("click", startGame);
+    pauseBtn.addEventListener("click", togglePause);
+    
+    // (Optionally, you can auto-start the game by uncommenting the following line.)
+    // startGame();
+  </script>
+</body>
+</html>
